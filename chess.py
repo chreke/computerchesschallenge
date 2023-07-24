@@ -12,10 +12,18 @@ class Color(Enum):
     Black = "Black"
     White = "White"
 
+    def opponent(self):
+        return Color.Black if self == Color.White else Color.White
+
 @dataclass
 class Move:
     name: str
     dest: Position
+
+@dataclass
+class Castle:
+    kingside: bool
+
 
 class Piece(ABC):
     color: Color
@@ -105,42 +113,75 @@ class Board:
                 return True
         return False
 
-    def can_castle(self, color, kingside):
-        # TODO: Check if rook is original position, and noone has
-        # moved to that position
+    def is_attacked_by(self, color, position):
+        for (pos, piece) in self.pieces.items():
+            if piece.color == color:
+                if position in piece.possible_moves(pos, self):
+                    return True
+        return False
+
+    def can_castle(self, color, kingside) -> bool:
+        rank = 0 if color.Black else 7
+        free_files = [5, 6] if kingside else [1, 2, 3]
+        for file in free_files:
+            if self.get_piece_at((file, rank)):
+                return False
+        not_attacked_files = [4, 5, 6, 7] if kingside else [0, 1, 2, 3, 4]
+        for file in not_attacked_files:
+            if self.is_attacked_by(color.opponent(), (file, rank)):
+                return False
+        # NOTE: We check whether castling is possible by checking if
+        # neither king nor rook has moved. Since there are two rooks,
+        # and they can move back to their original positions we check
+        # if the rook is in its original position *and* that no piece
+        # has moved *to* that position.
+        original_rook_position = (7 if kingside else 0, rank)
+        if self.get_piece_at(original_rook_position) != Rook(Color.Black):
+            return False
         for color, move in self.moves:
             if color == color:
                 if move.name == "K":
                     return False
+                if move.dest == original_rook_position:
+                    return False
+        return True
 
+    @classmethod
+    def move_piece(cls, pieces, src, dest):
+        updated_pieces = dict(pieces)
+        updated_pieces[dest] = updated_pieces.pop(src)
+        return updated_pieces
+
+    def castle(self, color: Color, move: Castle):
+        kingside = move.kingside
+        if not self.can_castle(color, kingside):
+            raise InvalidMoveError("Can't castle from this position")
+        rank = 0 if color.Black else 7
+        original_rook_position = (7 if kingside else 0, rank)
+        original_king_position = (4, rank)
+        new_rook_position = (5 if kingside else 3, rank)
+        new_king_position = (6 if kingside else 2, rank)
+        pieces = Board.move_piece(self.pieces, original_king_position, new_king_position)
+        pieces = Board.move_piece(pieces, original_rook_position, new_rook_position)
+        return Board(pieces=pieces, moves=self.moves + [(color, move)])
 
     # TODO: Move disambiguation
-    def move(self, color, move):
+    def move(self, color: Color, move: str):
         m = parse_move(move)
-        def piece_pred(pos, piece):
-            return piece.color == color \
-                    and piece.name == m.name \
-                    and m.dest in piece.possible_moves(pos, self)
-        pieces = [
-            (pos, piece) for pos, piece in self.pieces.items() 
-            if piece_pred(pos, piece)
-        ]
-        if not pieces:
+        if isinstance(m, Castle):
+            return self.castle(color, m)
+        matching_positions: list[Position] = []
+        for (pos, piece) in self.pieces.items():
+            if piece.color == color and piece.name == m.name:
+                if m.dest in piece.possible_moves(pos, self):
+                    matching_positions.append(pos)
+        if not matching_positions:
             raise InvalidMoveError("No matching piece found")
-        if not len(pieces) == 1:
+        if not len(matching_positions) == 1:
             raise InvalidMoveError("Ambiguous move")
-        [(pos, piece)] = pieces
-        updated_pieces = dict(self.pieces)
-        del updated_pieces[pos]
-        updated_pieces.pop(m.dest, None)
-        updated_pieces[m.dest] = piece
-        moves = self.moves + [(color, move)]
-        return Board(pieces=updated_pieces, moves=moves)
-
-
-@dataclass
-class Castle:
-    kingside: bool
+        [pos] = matching_positions
+        pieces = Board.move_piece(self.pieces, pos, m.dest)
+        return Board(pieces=pieces, moves=self.moves + [(color, m)])
 
 
 class Pawn(Piece):
@@ -291,7 +332,7 @@ class Queen(Piece):
 # TODO: Disambiguating moves
 # TODO: Promotion
 # TODO: Castling
-def parse_move(move):
+def parse_move(move: str):
     if move == "0-0" or move == "0-0-0":
         return Castle(kingside=move == "0-0")
     piece = "Q|R|N|B|K"

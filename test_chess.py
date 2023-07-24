@@ -123,12 +123,12 @@ def test_castling():
         (4, 0): King(Color.Black),
         (7, 0): Rook(Color.Black),
     })
-    kingside = board.move(Color.Black, "0-0")
-    assert kingside.get_piece_at((2, 0)) == King(Color.Black)
-    assert kingside.get_piece_at((3, 0)) == Rook(Color.Black)
     queenside = board.move(Color.Black, "0-0-0")
-    assert queenside.get_piece_at((6, 0)) == King(Color.Black)
-    assert queenside.get_piece_at((5, 0)) == Rook(Color.Black)
+    assert queenside.get_piece_at((2, 0)) == King(Color.Black)
+    assert queenside.get_piece_at((3, 0)) == Rook(Color.Black)
+    kingside = board.move(Color.Black, "0-0")
+    assert kingside.get_piece_at((6, 0)) == King(Color.Black)
+    assert kingside.get_piece_at((5, 0)) == Rook(Color.Black)
 
 
 def test_castling_not_available():
@@ -139,7 +139,7 @@ def test_castling_not_available():
     moved_rook = board.move(Color.Black, "Ra7")\
         .move(Color.Black, "Ra8")
     with pytest.raises(InvalidMoveError):
-        moved_rook.move(Color.Black, "0-0")
+        moved_rook.move(Color.Black, "0-0-0")
 
 @pytest.mark.parametrize("color", [Color.Black, Color.White])
 def test_castling_blocked_by_piece(color):
@@ -149,9 +149,9 @@ def test_castling_blocked_by_piece(color):
         (4, 0): King(Color.Black),
     })
     with pytest.raises(InvalidMoveError):
-        board.move(Color.Black, "0-0")
+        board.move(Color.Black, "0-0-0")
     
-@pytest.mark.parametrize("position", [(7, 2), (7, 3), (7, 4)])
+@pytest.mark.parametrize("position", [(0, 7), (1, 7), (4, 7)])
 def test_castling_blocked_by_attack(position):
     board = Board({
         (0, 0): Rook(Color.Black),
@@ -159,4 +159,13 @@ def test_castling_blocked_by_attack(position):
         position: Rook(Color.White),
     })
     with pytest.raises(InvalidMoveError):
-        board.move(Color.Black, "0-0")
+        board.move(Color.Black, "0-0-0")
+
+@pytest.mark.parametrize("position", [(5, 7), (6, 7), (7, 7)])
+def test_castling_not_blocked_by_attack(position):
+    board = Board({
+        (0, 0): Rook(Color.Black),
+        (4, 0): King(Color.Black),
+        position: Rook(Color.White),
+    })
+    board.move(Color.Black, "0-0-0")
